@@ -1,165 +1,154 @@
-// Neon Bay itself: a road grid, the blocks between the roads filled with buildings,
-// the landmarks, the pier, the stunt ramp, and the road graph every driver — traffic,
-// police and the autopilot — routes on. Everything is fixed by the seed, so the same
-// seed always builds the same city.
-import { LANDMARKS, PACKAGES, PALETTE, ROADS_X, ROADS_Y, ROAD_HALF, WORLD } from './config.js';
-import { int, pick } from './random.js';
+// The city of Vice Harbor, built from the fixed layout in config.js.
+// Everything here is pure geometry: water tests, building collision,
+// road membership, fog zones, and the seeded placement of traffic.
+import { WORLD, ROADS, BUILDINGS, DOCKS, FOG_BANKS, RAMPS, CRATES, SPOTS } from './config.js';
+import { makeRng, range, pick } from './random.js';
 
-function key(x, y) {
-  return `${x},${y}`;
-}
-
-/** Breadth-first route over the road graph: a list of {x, y} waypoints, start excluded. */
-export function route(graph, fromX, fromY, toX, toY) {
-  const start = nearestNode(graph, fromX, fromY);
-  const goal = nearestNode(graph, toX, toY);
-  if (start === goal) return [{ x: toX, y: toY }];
-  const prev = new Map([[start, null]]);
-  const queue = [start];
-  for (let head = 0; head < queue.length; head += 1) {
-    const cur = queue[head];
-    if (cur === goal) break;
-    for (const next of graph.links.get(cur) ?? []) {
-      if (!prev.has(next)) {
-        prev.set(next, cur);
-        queue.push(next);
-      }
-    }
-  }
-  if (!prev.has(goal)) return [{ x: toX, y: toY }];
-  const path = [];
-  let cur = goal;
-  while (cur !== null) {
-    path.push(cur);
-    cur = prev.get(cur);
-  }
-  path.reverse();
-  const points = path.slice(1).map((k) => graph.nodes.get(k));
-  // The goal node may already sit on the target (a landmark door): do not list it twice.
-  const last = points[points.length - 1];
-  if (!last || last.x !== toX || last.y !== toY) points.push({ x: toX, y: toY });
-  return points;
-}
-
-export function nearestNode(graph, x, y) {
-  let best = null;
-  let bestD = Infinity;
-  for (const [k, node] of graph.nodes) {
-    const d = (node.x - x) * (node.x - x) + (node.y - y) * (node.y - y);
-    if (d < bestD) {
-      bestD = d;
-      best = k;
-    }
-  }
-  return best;
-}
-
-/** Is (x, y) on a road (within the asphalt, not the sidewalk)? */
-export function onRoad(x, y) {
-  for (const rx of ROADS_X) if (Math.abs(x - rx) <= ROAD_HALF) return true;
-  for (const ry of ROADS_Y) if (Math.abs(y - ry) <= ROAD_HALF) return true;
+export function isWater(x, y) {
+  if (x >= WORLD.waterX) return true;
+  if (y >= WORLD.bayY && x >= WORLD.bayX) return true;
   return false;
 }
 
-/** The closest point on the road network to (x, y). */
-export function snapToRoad(x, y) {
-  let bestX = ROADS_X[0];
-  let bestY = ROADS_Y[0];
-  for (const rx of ROADS_X) if (Math.abs(x - rx) < Math.abs(x - bestX)) bestX = rx;
-  for (const ry of ROADS_Y) if (Math.abs(y - ry) < Math.abs(y - bestY)) bestY = ry;
-  return Math.abs(x - bestX) < Math.abs(y - bestY) ? { x: bestX, y } : { x, y: bestY };
+export function isOnRoad(x, y) {
+  const half = ROADS.width / 2;
+  for (const ry of ROADS.h) {
+    if (Math.abs(y - ry) <= half && x <= WORLD.waterX) return true;
+  }
+  for (const rx of ROADS.v) {
+    if (Math.abs(x - rx) <= half && y <= WORLD.bayY) return true;
+  }
+  return false;
 }
 
-export function buildCity(random) {
-  const buildings = [];
-  const signs = [];
-  // Blocks reserved for the landmark buildings stay clear of generic ones.
-  const reserved = [
-    { x0: 646, y0: 646, x1: 954, y1: 954 },     // Dante's Garage block
-    { x0: 1046, y0: 646, x1: 1354, y1: 954 },   // Neon Museum block
-    { x0: 2646, y0: 646, x1: 2954, y1: 954 },   // Hotel Miramar block
-    { x0: 1446, y0: 1046, x1: 1754, y1: 1354 }, // NBPD HQ block
-    { x0: 1446, y0: 1846, x1: 1754, y1: 2154 }, // Pier Warehouse block
-  ];
-  // One building per block, inset from the roads, never on a landmark plot.
-  for (let ix = 0; ix < ROADS_X.length - 1; ix += 1) {
-    for (let iy = 0; iy < ROADS_Y.length - 1; iy += 1) {
-      const x0 = ROADS_X[ix] + ROAD_HALF + 14;
-      const y0 = ROADS_Y[iy] + ROAD_HALF + 14;
-      const x1 = ROADS_X[ix + 1] - ROAD_HALF - 14;
-      const y1 = ROADS_Y[iy + 1] - ROAD_HALF - 14;
-      const cx = (x0 + x1) / 2;
-      const cy = (y0 + y1) / 2;
-      if (reserved.some((r) => cx > r.x0 && cx < r.x1 && cy > r.y0 && cy < r.y1)) continue;
-      const w = (x1 - x0) * (0.55 + random() * 0.35);
-      const h = (y1 - y0) * (0.55 + random() * 0.35);
-      const color = pick(random, PALETTE.building);
-      buildings.push({ x: cx - w / 2, y: cy - h / 2, w, h, color, floors: 2 + int(random, 5) });
-      if (random() < 0.55) {
-        signs.push({
-          x: cx - w / 2 + random() * w,
-          y: cy - h / 2 - 4,
-          text: pick(random, ['NEON', 'BAR', 'HOTEL', '24H', 'TACOS', 'CINE', 'MOTEL', 'PIER', 'DANCE', 'RAMEN']),
-          color: pick(random, PALETTE.neon),
-        });
+export function inFog(x, y) {
+  for (const f of FOG_BANKS) {
+    const dx = (x - f.x) / f.rx;
+    const dy = (y - f.y) / f.ry;
+    if (dx * dx + dy * dy <= 1) return f;
+  }
+  return null;
+}
+
+export function inSafehouse(x, y) {
+  const dx = x - SPOTS.safehouse.x;
+  const dy = y - SPOTS.safehouse.y;
+  return dx * dx + dy * dy <= SPOTS.safehouse.r * SPOTS.safehouse.r;
+}
+
+// Circle vs building rectangles. Returns the push-out vector, or null.
+export function collideBuildings(x, y, r) {
+  let px = 0;
+  let py = 0;
+  let hit = false;
+  for (const b of BUILDINGS) {
+    const cx = Math.max(b[0], Math.min(x, b[0] + b[2]));
+    const cy = Math.max(b[1], Math.min(y, b[1] + b[3]));
+    const dx = x - cx;
+    const dy = y - cy;
+    const d2 = dx * dx + dy * dy;
+    if (d2 < r * r) {
+      hit = true;
+      if (d2 > 0.0001) {
+        const d = Math.sqrt(d2);
+        const push = r - d;
+        px += (dx / d) * push;
+        py += (dy / d) * push;
+      } else {
+        // Centre inside the rect: push out along the smallest axis.
+        const left = x - b[0];
+        const right = b[0] + b[2] - x;
+        const top = y - b[1];
+        const bottom = b[1] + b[3] - y;
+        const m = Math.min(left, right, top, bottom);
+        if (m === left) px -= left + r;
+        else if (m === right) px += right + r;
+        else if (m === top) py -= top + r;
+        else py += bottom + r;
       }
     }
   }
-  // The landmark buildings, drawn bigger and named, each inside its own block.
-  const landmarkBuildings = [
-    { x: 660, y: 690, w: 180, h: 120, color: '#4a2c2c', floors: 2, label: "Dante's Garage" },
-    { x: 1110, y: 735, w: 180, h: 130, color: '#2c3a4a', floors: 3, label: 'Neon Museum' },
-    { x: 2715, y: 690, w: 170, h: 220, color: '#3a2c4a', floors: 6, label: 'Hotel Miramar' },
-    { x: 1500, y: 1130, w: 200, h: 140, color: '#2c3444', floors: 3, label: 'NBPD HQ' },
-    { x: 1500, y: 1940, w: 200, h: 120, color: '#3a3226', floors: 2, label: 'Pier Warehouse' },
-  ];
-  for (const b of landmarkBuildings) buildings.push(b);
+  return hit ? { x: px, y: py } : null;
+}
 
-  // The road graph: every intersection, linked to its neighbours, plus a door node
-  // for each landmark so the bot can route to a door and walk the last few steps.
-  const nodes = new Map();
-  const links = new Map();
-  const addNode = (x, y) => {
-    const k = key(x, y);
-    if (!nodes.has(k)) {
-      nodes.set(k, { x, y });
-      links.set(k, []);
+export function nearestRamp(x, y) {
+  let best = null;
+  let bestD = Infinity;
+  for (const r of RAMPS) {
+    const dx = x - r.x;
+    const dy = y - r.y;
+    const d = dx * dx + dy * dy;
+    if (d < bestD) {
+      bestD = d;
+      best = r;
     }
-    return k;
-  };
-  const link = (a, b) => {
-    if (!links.get(a).includes(b)) links.get(a).push(b);
-    if (!links.get(b).includes(a)) links.get(b).push(a);
-  };
-  for (const x of ROADS_X) {
-    for (const y of ROADS_Y) addNode(x, y);
   }
-  for (let ix = 0; ix < ROADS_X.length - 1; ix += 1) {
-    for (const y of ROADS_Y) link(key(ROADS_X[ix], y), key(ROADS_X[ix + 1], y));
+  return bestD < 60 * 60 ? best : null;
+}
+
+export function buildCity(seed) {
+  const rng = makeRng(seed);
+  const carColors = ['#c0392b', '#2980b9', '#27ae60', '#8e44ad', '#e67e22', '#95a5a6', '#f1c40f', '#16a085'];
+  const boatColors = ['#e8e8f0', '#d95d39', '#2e86ab', '#f2c14e'];
+
+  // Parked cars on the roads, spread across the grid.
+  const cars = [];
+  const carSpots = [];
+  for (const ry of ROADS.h) {
+    for (const rx of ROADS.v) {
+      carSpots.push({ x: rx + 160, y: ry - 28 });
+      carSpots.push({ x: rx - 160, y: ry + 28 });
+    }
   }
-  for (let iy = 0; iy < ROADS_Y.length - 1; iy += 1) {
-    for (const x of ROADS_X) link(key(x, ROADS_Y[iy]), key(x, ROADS_Y[iy + 1]));
-  }
-  const doors = {};
-  for (const [name, lm] of Object.entries(LANDMARKS)) {
-    const near = snapToRoad(lm.x, lm.y);
-    // Link the door to the nearest intersection BEFORE adding it, or the door
-    // would link to itself and sit off the road network, unreachable by route.
-    const nearest = nearestNode({ nodes, links }, lm.x, lm.y);
-    const dk = addNode(near.x, near.y);
-    link(dk, nearest);
-    doors[name] = { x: lm.x, y: lm.y, node: dk, label: lm.label };
+  for (let i = 0; i < 8; i++) {
+    const s = carSpots[Math.floor(rng() * carSpots.length) % carSpots.length];
+    cars.push({
+      id: 'car' + i,
+      kind: 'car',
+      x: s.x + range(rng, -30, 30),
+      y: s.y + range(rng, -12, 12),
+      angle: rng() < 0.5 ? 0 : Math.PI,
+      speed: 0,
+      color: pick(rng, carColors),
+      taken: false,
+    });
   }
 
-  const packages = PACKAGES.map((p, i) => ({ ...p, index: i, taken: false }));
+  // Boats moored at the docks.
+  const boats = [];
+  const boatSpots = [
+    { x: 2200, y: 1380 }, { x: 2240, y: 1440 }, { x: 2200, y: 920 },
+    { x: 2240, y: 420 }, { x: 2260, y: 1870 }, { x: 2320, y: 980 },
+  ];
+  for (let i = 0; i < boatSpots.length; i++) {
+    boats.push({
+      id: 'boat' + i,
+      kind: 'boat',
+      x: boatSpots[i].x,
+      y: boatSpots[i].y,
+      angle: range(rng, -0.4, 0.4),
+      speed: 0,
+      color: pick(rng, boatColors),
+      taken: false,
+    });
+  }
+
+  // The 12 cargo crates, placed exactly where config puts them.
+  const crates = CRATES.map((c, i) => ({
+    id: 'crate' + i,
+    x: c.x,
+    y: c.y,
+    where: c.where,
+    taken: false,
+  }));
 
   return {
-    buildings, signs, landmarkBuildings,
-    graph: { nodes, links },
-    doors,
-    packages,
-    ramp: { ...LANDMARKS.ramp, angle: -Math.PI / 2, width: 70 },
-    pier: { x: 1600, y: WORLD.waterY, width: 130, endY: 2380 },
-    world: WORLD,
+    cars,
+    boats,
+    crates,
+    buildings: BUILDINGS,
+    docks: DOCKS,
+    fog: FOG_BANKS,
+    ramps: RAMPS,
   };
 }

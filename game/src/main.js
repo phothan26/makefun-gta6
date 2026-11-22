@@ -1,233 +1,177 @@
-// Boot and the one loop: input is read every frame, the world advances in fixed 1/60 s
-// steps, and the renderer paints what is there. The game moves between screens:
-// title, play, paused, busted, wrecked, failed, complete and story.
-//
-// ?seed=N fixes the city. ?shot=start|drive|chase|complete (with &seed=N) stages that
-// scene instead of running the loop, paints it twice and sets window.__shotReady.
-// ?bot=1&job=N plays job N with the autopilot and sets window.__botResult.
-import { STEP } from './config.js';
-import { createRandom } from './random.js';
-import { createWorld, EVENT_BUSTED, EVENT_FAILED, EVENT_JOB, EVENT_PACKAGE, EVENT_STORY, EVENT_WRECKED } from './world.js';
-import { ACTION_CONFIRM, ACTION_ENTER, ACTION_MUTE, ACTION_PAUSE, ACTION_RADIO, createInput } from './input.js';
+// Browser entry for Vice Harbor. Wires the simulation, the renderer, the
+// keyboard, the radio and the save together, and runs the game loop.
+// Also supports ?shot=start|drive|chase|complete, which stages one of the
+// four deterministic screenshot states and pauses the simulation there.
+import { createGame, stepGame } from './world.js';
+import { render } from './render.js';
+import { makeInput, attachKeyboard, clearEdges } from './input.js';
 import { createAudio } from './audio.js';
-import { createBot } from './bot.js';
-import { createRenderer, SCREEN_BUSTED, SCREEN_COMPLETE, SCREEN_FAILED, SCREEN_PAUSED, SCREEN_PLAY, SCREEN_STORY, SCREEN_TITLE, SCREEN_WRECKED } from './render.js';
-import { stageShot } from './shots.js';
-import { readSave, writeSave } from './save.js';
+import { loadSave, writeSave } from './save.js';
+import { isWater } from './city.js';
 
-/** The longest frame the loop catches up on; a longer stall (a hidden tab) is dropped. */
-const MAX_FRAME = 0.25;
-/** In bot mode the sim runs this many times faster than real time. */
-const BOT_SPEED = 8;
-
-const params = new URLSearchParams(window.location.search);
-const shot = params.get('shot');
-const botMode = params.get('bot') === '1';
-const botJob = Math.max(0, Math.min(4, Number.parseInt(params.get('job') ?? '0', 10) || 0));
-const seedParam = Number.parseInt(params.get('seed') ?? '', 10);
-const seed = Number.isInteger(seedParam) ? seedParam : Math.floor(Math.random() * 4294967296);
-
-const canvas = document.getElementById('game');
-const status = document.getElementById('status');
-const saveData = readSave();
-const world = createWorld(createRandom(seed), saveData);
-world.onSave = (data) => writeSave(data);
-const renderer = createRenderer(canvas);
-const audio = createAudio();
-const bot = createBot(world);
-
-// What the debug harness and the screenshot runner read.
-window.__game = { world, bot };
-
-function ui() {
-  return {
-    best: saveData ? saveData.best : 0,
-    savedJobs: world.jobsDone,
-    station: audio.stationName,
-    muted: audio.muted,
-  };
+function params() {
+  const out = {};
+  if (typeof location === 'undefined') return out;
+  for (const [k, v] of new URLSearchParams(location.search)) out[k] = v;
+  return out;
 }
 
-function runShot(name) {
-  const scene = stageShot(name, world);
-  let painted = 0;
-  function paint() {
-    renderer.draw(world, scene.screen, ui());
-    painted += 1;
-    if (painted < 2) requestAnimationFrame(paint);
-    else window.__shotReady = true;
+// Stage one of the four screenshot states. Each is built from a fixed
+// seed and a fixed number of simulation steps, so the frame is identical
+// every time it is staged.
+function stageShot(game, shot) {
+  const dt = 1 / 60;
+  const input = makeInput();
+  if (shot === 'start') {
+    // Fresh game: Rook on foot at the Marina, golden hour, job one up.
+    return;
   }
-  requestAnimationFrame(paint);
+  if (shot === 'drive') {
+    const car = game.city.cars[0];
+    car.taken = true;
+    game.player.vehicle = car;
+    car.x = 700;
+    car.y = 700;
+    car.angle = 0;
+    car.speed = 300;
+    game.player.x = car.x;
+    game.player.y = car.y;
+    game.player.angle = 0;
+    game.time = 170; // dusk
+    game.dayT = 170 / 480;
+    input.up = true;
+    for (let i = 0; i < 60; i++) stepGame(game, input, dt);
+    return;
+  }
+  if (shot === 'chase') {
+    const car = game.city.cars[1];
+    car.taken = true;
+    game.player.vehicle = car;
+    car.x = 1100;
+    car.y = 1100;
+    car.angle = Math.PI / 2;
+    car.speed = 340;
+    game.player.x = car.x;
+    game.player.y = car.y;
+    game.player.angle = Math.PI / 2;
+    game.wanted = 2;
+    game.heat = 60;
+    game.time = 340; // night falling
+    game.dayT = 340 / 480;
+    game.police.push(
+      { x: 900, y: 900, angle: 0.6, speed: 300, kind: 'car', lastX: 1100, lastY: 1100, searchT: 0, nearMissAt: -10 },
+      { x: 1300, y: 1300, angle: -2.2, speed: 300, kind: 'car', lastX: 1100, lastY: 1100, searchT: 0, nearMissAt: -10 },
+    );
+    input.up = true;
+    input.right = true;
+    for (let i = 0; i < 90; i++) stepGame(game, input, dt);
+    return;
+  }
+  if (shot === 'complete') {
+    const boat = game.city.boats[0];
+    boat.taken = true;
+    game.player.vehicle = boat;
+    boat.x = 2950;
+    boat.y = 400;
+    boat.angle = 0;
+    boat.speed = 0;
+    game.player.x = boat.x;
+    game.player.y = boat.y;
+    game.player.angle = 0;
+    game.jobsDone = 5;
+    game.jobIndex = game.jobs.length;
+    game.stepIndex = 0;
+    game.money = 5750;
+    game.cratesGot = 12;
+    game.allDone = true;
+    game.over = true;
+    game.banner = { text: 'ALL JOBS COMPLETE', sub: 'Vice Harbor is yours — $5750', t: 0, dur: 6 };
+    game.time = 420; // night
+    game.dayT = 420 / 480;
+    return;
+  }
 }
 
-function runBot() {
-  world.reset(botJob);
-  let screen = SCREEN_PLAY;
-  let steps = 0;
-  let done = false;
-  let lastHealth = world.player.health;
+export function boot(canvas) {
+  const q = params();
+  const seed = q.seed ? parseInt(q.seed, 10) || 7 : 7;
+  const game = createGame(seed);
+  const shot = q.shot || null;
+  if (shot) stageShot(game, shot);
 
-  function finish(status) {
-    if (done) return;
-    done = true;
-    const p = world.player;
-    window.__botResult = {
-      status,
-      simSeconds: Math.round(world.time * 10) / 10,
-      steps,
-      cash: p.cash,
-      wanted: p.wanted,
-      health: Math.round(p.health),
-      x: Math.round(p.car ? p.car.x : p.x),
-      y: Math.round(p.car ? p.car.y : p.y),
-    };
-  }
-
-  function frame() {
-    requestAnimationFrame(frame);
-    if (done) {
-      renderer.draw(world, screen, ui());
-      return;
-    }
-    for (let i = 0; i < BOT_SPEED; i += 1) {
-      const events = world.step(STEP, bot.update(STEP));
-      steps += 1;
-      if (events & EVENT_JOB) {
-        screen = (events & EVENT_STORY) ? SCREEN_STORY : SCREEN_COMPLETE;
-        audio.sfx('complete');
-        finish((events & EVENT_STORY) ? 'story' : 'complete');
-        break;
-      }
-      if (events & EVENT_BUSTED) {
-        screen = SCREEN_BUSTED;
-        finish('busted');
-        break;
-      }
-      if (events & EVENT_WRECKED) {
-        screen = SCREEN_WRECKED;
-        finish('wrecked');
-        break;
-      }
-      if (events & EVENT_FAILED) {
-        finish('failed');
-        break;
-      }
-      if (world.time > 300) {
-        finish('timeout');
-        break;
-      }
-    }
-    if (world.player.health < lastHealth) audio.sfx('crash');
-    lastHealth = world.player.health;
-    renderer.draw(world, screen, ui());
-  }
-  requestAnimationFrame(frame);
-}
-
-function runGame() {
-  const input = createInput(canvas);
-  let screen = SCREEN_TITLE;
-  let accumulator = 0;
-  let last = performance.now();
-  let lastHealth = world.player.health;
-
-  function announce(message) {
-    status.textContent = message;
-  }
-
-  function startJob(index) {
-    world.reset(index);
-    screen = SCREEN_PLAY;
-    announce(`Job ${index + 1} of 5: ${world.missionsApi.job().title}.`);
-  }
-
-  function nextJobOrRoam() {
-    if (world.jobsDone < 5) startJob(world.jobsDone);
-    else {
-      world.reset();
-      screen = SCREEN_PLAY;
-      announce('Free roam. Neon Bay is yours.');
+  // Resume a previous run unless this is a staged shot.
+  if (!shot) {
+    const save = loadSave();
+    if (save && typeof save.money === 'number') {
+      game.money = save.money;
+      game.cratesGot = save.cratesGot || 0;
     }
   }
 
-  function handleActions() {
-    const actions = input.takeActions();
-    input.enter = !!(actions & ACTION_ENTER);
-    if (actions & ACTION_RADIO) audio.nextStation();
-    if (actions & ACTION_MUTE) audio.setMuted(!audio.muted);
-    if (actions & ACTION_CONFIRM) {
-      audio.ensure();
-      if (screen === SCREEN_TITLE) nextJobOrRoam();
-      else if (screen === SCREEN_BUSTED || screen === SCREEN_WRECKED || screen === SCREEN_FAILED) {
-        startJob(world.missions.jobIndex);
-      } else if (screen === SCREEN_COMPLETE) nextJobOrRoam();
-      else if (screen === SCREEN_STORY) {
-        world.reset();
-        screen = SCREEN_PLAY;
-      } else if (screen === SCREEN_PAUSED) screen = SCREEN_PLAY;
-    }
-    if (actions & ACTION_PAUSE && screen === SCREEN_PLAY) {
-      screen = SCREEN_PAUSED;
-      announce('Paused.');
-    } else if (actions & ACTION_PAUSE && screen === SCREEN_PAUSED) {
-      screen = SCREEN_PLAY;
-      announce('Playing.');
-    }
-  }
+  const input = makeInput();
+  const detach = attachKeyboard(input, typeof window !== 'undefined' ? window : null);
+  const audio = createAudio();
+  const ctx = canvas.getContext('2d');
 
-  function step() {
-    const events = world.step(STEP, input);
-    if (world.player.health < lastHealth) audio.sfx('crash');
-    lastHealth = world.player.health;
-    if (events & EVENT_PACKAGE) audio.sfx('pickup');
-    if (events & EVENT_JOB) {
-      audio.sfx('complete');
-      screen = (events & EVENT_STORY) ? SCREEN_STORY : SCREEN_COMPLETE;
-    } else if (events & EVENT_BUSTED) {
-      audio.sfx('busted');
-      screen = SCREEN_BUSTED;
-    } else if (events & EVENT_WRECKED) {
-      audio.sfx('crash');
-      screen = SCREEN_WRECKED;
-    } else if (events & EVENT_FAILED) {
-      screen = SCREEN_FAILED;
-    }
-  }
+  let last = 0;
+  let acc = 0;
+  let saveTimer = 0;
+  const STEP = 1 / 60;
 
-  function frame(now) {
-    requestAnimationFrame(frame);
-    accumulator += Math.min((now - last) / 1000, MAX_FRAME);
+  function frame(ts) {
+    const now = ts / 1000;
+    if (!last) last = now;
+    let dt = now - last;
     last = now;
-    handleActions();
-    if (screen === SCREEN_PLAY) {
-      while (accumulator >= STEP) {
-        step();
-        accumulator -= STEP;
-        if (screen !== SCREEN_PLAY) {
-          accumulator = 0;
-          break;
+    if (dt > 0.25) dt = 0.25;
+
+    if (!shot) {
+      acc += dt;
+      let n = 0;
+      while (acc >= STEP && n < 5) {
+        if (input.radio >= 0) {
+          audio.start();
+          audio.setStation(input.radio);
         }
+        if (input.mute) audio.toggleMute();
+        stepGame(game, input, STEP);
+        clearEdges(input);
+        acc -= STEP;
+        n++;
       }
-    } else {
-      accumulator = 0;
+      // Audio follows the game, not the wall clock.
+      const speedFrac = Math.abs(game.player.speed) / 430;
+      audio.engine(speedFrac, isWater(game.player.x, game.player.y));
+      let near = 1;
+      for (const u of game.police) {
+        const d = Math.hypot(u.x - game.player.x, u.y - game.player.y);
+        near = Math.min(near, d / 600);
+      }
+      audio.siren(game.wanted > 0 ? near : 1);
+      saveTimer += dt;
+      if (saveTimer > 10) {
+        saveTimer = 0;
+        writeSave(game);
+      }
     }
-    const p = world.player;
-    audio.setEngine(p.car ? Math.abs(p.car.speed) / 545 : 0, !!p.car);
-    audio.setSiren(world.cops.length > 0 && p.wanted > 0);
-    renderer.draw(world, screen, ui());
+
+    render(ctx, game, { w: canvas.width, h: canvas.height });
+    if (!shot) requestAnimationFrame(frame);
   }
 
-  document.addEventListener('visibilitychange', () => {
-    if (document.hidden && screen === SCREEN_PLAY) {
-      screen = SCREEN_PAUSED;
-      announce('Paused.');
-    }
-  });
+  if (shot) {
+    render(ctx, game, { w: canvas.width, h: canvas.height });
+  } else {
+    requestAnimationFrame(frame);
+  }
 
-  announce('Neon Bay, Sunset Getaway. Press Enter or click to start.');
-  requestAnimationFrame(frame);
+  // The shots harness drives and inspects the game through this handle.
+  const handle = { game, input, audio, canvas, detach };
+  if (typeof window !== 'undefined') window.__game = handle;
+  return handle;
 }
 
-if (shot) runShot(shot);
-else if (botMode) runBot();
-else runGame();
+if (typeof document !== 'undefined') {
+  const canvas = document.getElementById('game');
+  if (canvas) boot(canvas);
+}

@@ -1,33 +1,42 @@
-// Progress between visits: jobs finished, cash, packages found, best score.
-// Storage can be off (private windows): then progress lasts this visit only.
-import { SAVE_KEY } from './config.js';
+// Save / load through localStorage. Guarded everywhere: in Node, in a
+// fresh profile, or with storage disabled, every call is a safe no-op.
+const KEY = 'vice-harbor-save-v1';
 
-export function readSave() {
+export function loadSave() {
   try {
-    const raw = window.localStorage.getItem(SAVE_KEY);
+    if (typeof localStorage === 'undefined') return null;
+    const raw = localStorage.getItem(KEY);
     if (!raw) return null;
     const data = JSON.parse(raw);
     if (typeof data !== 'object' || data === null) return null;
-    return {
-      jobsDone: Math.max(0, Math.min(5, data.jobsDone | 0)),
-      cash: Math.max(0, data.cash | 0),
-      packages: Array.isArray(data.packages) ? data.packages.filter((n) => typeof n === 'number') : [],
-      best: Math.max(0, data.best | 0),
-    };
-  } catch {
+    return data;
+  } catch (e) {
     return null;
   }
 }
 
-export function writeSave(data) {
+export function writeSave(game) {
   try {
-    window.localStorage.setItem(SAVE_KEY, JSON.stringify({
-      jobsDone: data.jobsDone | 0,
-      cash: data.cash | 0,
-      packages: data.packages,
-      best: data.best | 0,
-    }));
-  } catch {
-    // Storage off: nothing to do.
+    if (typeof localStorage === 'undefined') return;
+    const data = {
+      money: game.money,
+      jobsDone: game.jobsDone,
+      jobIndex: game.jobIndex,
+      cratesGot: game.cratesGot,
+      dayT: game.dayT,
+      time: game.time,
+    };
+    localStorage.setItem(KEY, JSON.stringify(data));
+  } catch (e) {
+    // Storage full or blocked: the game keeps running without a save.
+  }
+}
+
+export function clearSave() {
+  try {
+    if (typeof localStorage === 'undefined') return;
+    localStorage.removeItem(KEY);
+  } catch (e) {
+    // ignore
   }
 }
