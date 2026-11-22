@@ -1,91 +1,76 @@
-// Keyboard and mouse, read once a frame. Keys are held in a set; actions are
-// edge-triggered (pressed this frame) and cleared after the game reads them.
+// Keyboard and pointer input. Held keys give a driving/walking direction; one-shot
+// presses (confirm, pause, enter a car, radio, mute) are queued as bit flags and taken
+// once by the loop, so a press between two frames is never lost or counted twice.
+
 export const ACTION_CONFIRM = 1;
 export const ACTION_PAUSE = 2;
-export const ACTION_PUNCH = 4;
-export const ACTION_ENTER = 8;
-export const ACTION_RADIO = 16;
-export const ACTION_MUTE = 32;
-export const ACTION_JOB = 64;
+export const ACTION_ENTER = 4;
+export const ACTION_RADIO = 8;
+export const ACTION_MUTE = 16;
 
-const KEYMAP = {
-  Enter: ACTION_CONFIRM,
-  ' ': ACTION_CONFIRM,
-  Escape: ACTION_PAUSE,
-  p: ACTION_PAUSE,
-  P: ACTION_PAUSE,
-  f: ACTION_PUNCH,
-  F: ACTION_PUNCH,
-  e: ACTION_ENTER,
-  E: ACTION_ENTER,
-  r: ACTION_RADIO,
-  R: ACTION_RADIO,
-  m: ACTION_MUTE,
-  M: ACTION_MUTE,
-  j: ACTION_JOB,
-  J: ACTION_JOB,
-};
+const UP = new Set(['ArrowUp', 'KeyW']);
+const DOWN = new Set(['ArrowDown', 'KeyS']);
+const LEFT = new Set(['ArrowLeft', 'KeyA']);
+const RIGHT = new Set(['ArrowRight', 'KeyD']);
+const CONFIRM = new Set(['Space', 'Enter']);
+const PAUSE = new Set(['KeyP', 'Escape']);
+const ENTER = new Set(['KeyE']);
+const RADIO = new Set(['KeyR']);
+const MUTE = new Set(['KeyM']);
 
-export function createInput(canvas) {
-  const keys = new Set();
+export function createInput(target) {
+  let up = false;
+  let down = false;
+  let left = false;
+  let right = false;
+  let handbrake = false;
   let actions = 0;
-  let mouse = { x: 0, y: 0, clicked: false };
 
-  function keyDown(event) {
-    if ([' ', 'ArrowUp', 'ArrowDown', 'ArrowLeft', 'ArrowRight'].includes(event.key)) {
-      event.preventDefault();
-    }
-    keys.add(event.key.length === 1 ? event.key.toLowerCase() : event.key);
-    keys.add(event.key);
-    const action = KEYMAP[event.key];
-    if (action) actions |= action;
-  }
-
-  function keyUp(event) {
-    keys.delete(event.key.length === 1 ? event.key.toLowerCase() : event.key);
-    keys.delete(event.key);
-  }
-
-  function click(event) {
-    const rect = canvas.getBoundingClientRect();
-    mouse = { x: event.clientX - rect.left, y: event.clientY - rect.top, clicked: true };
-  }
-
-  window.addEventListener('keydown', keyDown);
-  window.addEventListener('keyup', keyUp);
-  canvas.addEventListener('mousedown', click);
-
-  function held(...names) {
-    return names.some((n) => keys.has(n));
-  }
+  window.addEventListener('keydown', (event) => {
+    if (UP.has(event.code)) up = true;
+    else if (DOWN.has(event.code)) down = true;
+    else if (LEFT.has(event.code)) left = true;
+    else if (RIGHT.has(event.code)) right = true;
+    else if (event.code === 'ShiftLeft' || event.code === 'ShiftRight') handbrake = true;
+    else if (CONFIRM.has(event.code)) { if (!event.repeat) actions |= ACTION_CONFIRM; }
+    else if (PAUSE.has(event.code)) { if (!event.repeat) actions |= ACTION_PAUSE; }
+    else if (ENTER.has(event.code)) { if (!event.repeat) actions |= ACTION_ENTER; }
+    else if (RADIO.has(event.code)) { if (!event.repeat) actions |= ACTION_RADIO; }
+    else if (MUTE.has(event.code)) { if (!event.repeat) actions |= ACTION_MUTE; }
+    else return;
+    event.preventDefault();
+  });
+  window.addEventListener('keyup', (event) => {
+    if (UP.has(event.code)) up = false;
+    else if (DOWN.has(event.code)) down = false;
+    else if (LEFT.has(event.code)) left = false;
+    else if (RIGHT.has(event.code)) right = false;
+    else if (event.code === 'ShiftLeft' || event.code === 'ShiftRight') handbrake = false;
+  });
+  // A key released while the tab is hidden never sends keyup: let go of everything on blur.
+  window.addEventListener('blur', () => {
+    up = false; down = false; left = false; right = false; handbrake = false;
+  });
+  target.addEventListener('pointerdown', () => {
+    actions |= ACTION_CONFIRM;
+  });
 
   return {
-    /** Movement for this frame, in screen-relative directions. */
+    /** The held direction: -1/0/1 on each axis, and the handbrake. */
     direction() {
       return {
-        up: held('w', 'W', 'ArrowUp'),
-        down: held('s', 'S', 'ArrowDown'),
-        left: held('a', 'A', 'ArrowLeft'),
-        right: held('d', 'D', 'ArrowRight'),
-        handbrake: held(' '),
-        run: held('Shift'),
+        x: (right ? 1 : 0) - (left ? 1 : 0),
+        y: (down ? 1 : 0) - (up ? 1 : 0),
+        handbrake,
       };
     },
-    /** Edge-triggered actions since the last read; reading clears them. */
+    /** One-shot enter-a-car press, set by the loop from takeActions and consumed by the world. */
+    enter: false,
+    /** The one-shot presses since the last call, as ACTION_* flags. */
     takeActions() {
       const taken = actions;
       actions = 0;
       return taken;
-    },
-    /** Mouse clicks since the last read; reading clears them. */
-    takeClick() {
-      const taken = mouse;
-      mouse = { x: 0, y: 0, clicked: false };
-      return taken;
-    },
-    /** True while the named key is held (for menu navigation). */
-    isDown(name) {
-      return keys.has(name);
     },
   };
 }

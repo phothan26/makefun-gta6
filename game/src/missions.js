@@ -1,326 +1,195 @@
-// The story: five jobs for fixer Dante Cole, plus the free-roam taxi fares that keep
-// the meter running between jobs. A job is a list of steps; each step names an objective
-// the renderer and the autopilot both read.
-import { CAR, MISSION, PALETTE, TIME, WORLD } from './config.js';
-import { createCar } from './vehicles.js';
-import { createFootCop } from './pedestrians.js';
-import { commitCrime } from './player.js';
+// The story: five jobs for Mara Voss, getaway driver of Neon Bay. A job is a list of
+// steps; a step is a place to reach, a fare to carry, a car to tail, or an escape.
+// The mission object owns the job state and the objective the HUD and the bot steer by.
+import { LANDMARKS } from './config.js';
 
 export const JOBS = [
   {
-    id: 1,
-    title: 'THE INTERVIEW',
-    client: 'DANTE COLE',
-    briefing: 'Fresh out, Mara? Prove you can drive. Take any car on the street and bring it to my garage. No cops, no fuss.',
-    reward: 150,
-    startTime: 0.1,
+    title: 'THE INTERVIEW', pay: 400, startClock: 0.15,
+    brief: "Dante Cole has work for a driver fresh out of prison. Meet him, then run his first errand.",
     steps: [
-      { type: 'enterCar', label: 'Steal a car (walk up to one, press E)' },
-      { type: 'goto', x: 760, y: 1840, label: "Drive to Dante's Garage", radius: 70 },
+      { type: 'goto', x: LANDMARKS.garage.x, y: LANDMARKS.garage.y, label: "Meet Dante at Dante's Garage" },
+      { type: 'pickup', x: LANDMARKS.museum.x, y: LANDMARKS.museum.y, label: 'Pick up the package at the Neon Museum', wait: 1.5 },
+      { type: 'dropoff', x: LANDMARKS.hotel.x, y: LANDMARKS.hotel.y, label: 'Deliver it to Hotel Miramar' },
     ],
   },
   {
-    id: 2,
-    title: 'GOLDEN HOUR RUN',
-    client: 'DANTE COLE',
-    briefing: 'A package for the Miramar, and the sun is going down. Get it there before dark. The city pays for fast, not for careful.',
-    reward: 300,
-    timeLimit: 80,
-    startTime: 0.22,
+    title: 'GOLDEN HOUR RUN', pay: 600, startClock: 0.42, timer: 150,
+    brief: 'Three checkpoints across the city before the sun drops into the bay. The clock is the boss.',
     steps: [
-      { type: 'goto', x: 360, y: 1520, label: 'Pick up the package at the Pier Arcade', radius: 60 },
-      { type: 'goto', x: 360, y: 1160, label: 'Deliver to Hotel Miramar', radius: 70 },
+      { type: 'goto', x: 2600, y: 600, label: 'Checkpoint 1 — North Avenue' },
+      { type: 'goto', x: 600, y: 1800, label: 'Checkpoint 2 — Southside' },
+      { type: 'goto', x: 3000, y: 2200, label: 'Checkpoint 3 — Beachfront' },
     ],
   },
   {
-    id: 3,
-    title: 'FARE PLAY',
-    client: 'THE CITY',
-    briefing: 'Slow night. Work the stands: three fares, three drop-offs. Tips are better when the ride is smooth — no crashes, no cops.',
-    reward: 250,
-    startTime: 0.4,
+    title: 'FARE PLAY', pay: 500, startClock: 0.5,
+    brief: 'Dante needs a cab for the night. Three fares, three corners of Neon Bay. Tips follow style.',
     steps: [
-      { type: 'fare', stand: 0, label: 'Pick up the fare at Hotel Miramar' },
-      { type: 'fare', stand: 1, label: 'Pick up the fare at St. Marina' },
-      { type: 'fare', stand: 2, label: 'Pick up the fare at the Neon Museum' },
+      { type: 'fare', px: 1000, py: 1400, dx: 2200, dy: 600, label: 'Fare 1 — pick up, then drop off' },
+      { type: 'fare', px: 2200, py: 1800, dx: 600, dy: 2200, label: 'Fare 2 — pick up, then drop off' },
+      { type: 'fare', px: 1800, py: 600, dx: 2600, dy: 1400, label: 'Fare 3 — pick up, then drop off' },
     ],
   },
   {
-    id: 4,
-    title: 'COLD TRAIL',
-    client: 'DANTE COLE',
-    briefing: 'You are hot — three stars and the whole NBPD on your tail. Lose them. Swap cars to shed a star, break line of sight, and vanish.',
-    reward: 400,
-    timeLimit: 150,
-    startTime: 0.55,
-    startWanted: 3,
+    title: 'COLD TRAIL', pay: 700, startClock: 0.62,
+    brief: "A courier is moving Dante's money. Follow him for 25 seconds — close enough to see, far enough not to be seen.",
     steps: [
-      { type: 'loseHeat', label: 'Lose the heat: wanted level to zero' },
+      { type: 'tail', label: 'Tail the courier — stay close, stay unseen', duration: 25 },
     ],
   },
   {
-    id: 5,
-    title: 'SUNSET GETAWAY',
-    client: 'DANTE COLE',
-    briefing: 'The last job. Pick up the crew at the Neon Museum, punch through the roadblocks, and be on the pier when the sun touches the water.',
-    reward: 800,
-    timeLimit: 170,
-    startTime: 0.7,
-    startWanted: 2,
+    title: 'SUNSET GETAWAY', pay: 1200, startClock: 0.82,
+    brief: 'The last job. Grab the loot at the Pier Warehouse, then lose the whole NBPD on the way to the pier.',
     steps: [
-      { type: 'goto', x: 2000, y: 830, label: 'Pick up the crew at the Neon Museum', radius: 70 },
-      { type: 'goto', x: -110, y: 1250, label: 'Reach the end of the pier', radius: 60 },
+      { type: 'pickup', x: LANDMARKS.warehouse.x, y: LANDMARKS.warehouse.y, label: 'Grab the loot at the Pier Warehouse', wait: 2, wanted: 3 },
+      { type: 'escape', x: LANDMARKS.pier.x, y: LANDMARKS.pier.y, label: 'Reach the end of the pier' },
     ],
   },
 ];
 
-const FARE_DESTINATIONS = [
-  { x: 2400, y: 470, label: 'St. Marina Hospital' },
-  { x: 2800, y: 2180, label: 'NBPD Headquarters' },
-  { x: 360, y: 1520, label: 'The Pier Arcade' },
-  { x: 1400, y: 1250, label: 'Bayview Park' },
-  { x: 600, y: 200, label: 'North Gate' },
-];
+const ARRIVE = 72;
 
-export function createMissions() {
-  return {
-    jobIndex: -1, // -1: free roam, no job active
-    stepIndex: 0,
-    timer: 0,
-    status: 'idle', // idle | brief | active | complete | failed
-    fare: null, // { stand, dest, state: 'waiting' | 'riding', rider }
-    fareCooldown: 6,
-    roadblocks: [],
-    lastPayout: 0,
-    lastStyleBonus: 0,
+export function createMissions(world) {
+  const state = {
+    jobIndex: 0, stepIndex: 0, status: 'idle', // idle | active | complete | failed | story
+    timer: 0, stepTimer: 0, progress: 0, phase: 'pickup',
+    lastComplete: null, courier: null,
   };
-}
 
-export function startJob(world, index) {
-  const missions = world.missions;
-  const job = JOBS[index];
-  missions.jobIndex = index;
-  missions.stepIndex = 0;
-  missions.timer = job.timeLimit || 0;
-  missions.status = 'brief';
-  missions.roadblocks = [];
-  // The sun sets across every job: each one starts at its own hour.
-  world.time = job.startTime * TIME.cycleSeconds;
-  if (job.startWanted) {
-    world.player.wanted = job.startWanted;
-    world.player.quietTimer = 0;
+  function job() {
+    return JOBS[state.jobIndex];
   }
-  if (job.id === 5) {
-    // The finale: two roadblocks of parked police cars across the pier road.
-    const spots = [
-      { x: 600, y: 1250, angle: Math.PI / 2 },
-      { x: 600, y: 1200, angle: Math.PI / 2 },
-      { x: 600, y: 1300, angle: Math.PI / 2 },
-      { x: 200, y: 1250, angle: Math.PI / 2 },
-      { x: 200, y: 1200, angle: Math.PI / 2 },
-    ];
-    for (const s of spots) {
-      const car = createCar({ x: s.x, y: s.y, angle: s.angle, kind: 'cop', color: PALETTE.cop, owner: 'parked' });
-      car.heavy = true;
-      world.parked.push(car);
-      missions.roadblocks.push(car);
+
+  function step() {
+    return job().steps[state.stepIndex];
+  }
+
+  function startJob(index) {
+    state.jobIndex = index;
+    state.stepIndex = 0;
+    state.status = 'active';
+    state.timer = job().timer ?? 0;
+    state.stepTimer = 0;
+    state.progress = 0;
+    state.phase = 'pickup';
+    state.courier = null;
+    state.lastComplete = null;
+    world.clock = job().startClock;
+    if (job().steps[0].type === 'tail') state.courier = world.spawnCourier();
+    world.announce(job().title);
+  }
+
+  function fail() {
+    state.status = 'failed';
+  }
+
+  function completeJob() {
+    const pay = Math.round(job().pay * (1 + world.player.style / 200));
+    world.player.cash += pay;
+    state.lastComplete = { title: job().title, pay, index: state.jobIndex };
+    state.status = state.jobIndex === JOBS.length - 1 ? 'story' : 'complete';
+    world.saveProgress();
+    return pay;
+  }
+
+  function advanceStep() {
+    state.stepIndex += 1;
+    state.stepTimer = 0;
+    state.progress = 0;
+    state.phase = 'pickup';
+    if (state.stepIndex >= job().steps.length) completeJob();
+    else if (step().type === 'tail') state.courier = world.spawnCourier();
+  }
+
+  /** The current objective for the HUD arrow, the minimap and the bot. */
+  function objective() {
+    if (state.status !== 'active') return null;
+    const s = step();
+    if (s.type === 'goto' || s.type === 'pickup' || s.type === 'dropoff' || s.type === 'escape') {
+      return { label: s.label, x: s.x, y: s.y };
     }
+    if (s.type === 'fare') {
+      return state.phase === 'pickup'
+        ? { label: `${s.label} — pick up here`, x: s.px, y: s.py }
+        : { label: `${s.label} — drop off here`, x: s.dx, y: s.dy };
+    }
+    if (s.type === 'tail' && state.courier) {
+      return { label: s.label, x: state.courier.x, y: state.courier.y, moving: true };
+    }
+    return null;
   }
-  world.events.push({ type: 'job', x: world.player.x, y: world.player.y });
-}
 
-export function currentStep(world) {
-  const m = world.missions;
-  if (m.jobIndex < 0 || m.status !== 'active') return null;
-  return JOBS[m.jobIndex].steps[m.stepIndex] || null;
-}
+  function playerPos() {
+    const p = world.player;
+    return p.car ? { x: p.car.x, y: p.car.y } : { x: p.x, y: p.y };
+  }
 
-/** Where the objective marker sits right now, for the HUD, the minimap and the bot. */
-export function currentObjective(world) {
-  const m = world.missions;
-  const step = currentStep(world);
-  if (step) {
-    if (step.type === 'goto') return { x: step.x, y: step.y, label: step.label };
-    if (step.type === 'enterCar') {
-      // The nearest parked car, not the first in the list and never a moving
-      // one: the player walks to a car that stays where it is.
-      let best = null;
-      let bestD = Infinity;
-      for (const car of world.parked) {
-        const d = Math.hypot(car.x - world.player.x, car.y - world.player.y);
-        if (d < bestD) { bestD = d; best = car; }
+  function near(x, y, r = ARRIVE) {
+    const pos = playerPos();
+    const dx = pos.x - x;
+    const dy = pos.y - y;
+    return dx * dx + dy * dy < r * r;
+  }
+
+  function update(dt) {
+    if (state.status !== 'active') return;
+    if (state.timer > 0) {
+      state.timer -= dt;
+      if (state.timer <= 0) {
+        state.timer = 0;
+        fail();
+        return;
       }
-      if (!best) {
-        for (const car of world.traffic) {
-          const d = Math.hypot(car.x - world.player.x, car.y - world.player.y);
-          if (d < bestD) { bestD = d; best = car; }
+    }
+    const s = step();
+    if (s.type === 'goto' || s.type === 'dropoff' || s.type === 'escape') {
+      if (near(s.x, s.y)) advanceStep();
+      return;
+    }
+    if (s.type === 'pickup') {
+      if (near(s.x, s.y)) {
+        state.stepTimer += dt;
+        if (state.stepTimer >= (s.wait ?? 1.5)) {
+          if (s.wanted) world.setWanted(s.wanted);
+          advanceStep();
         }
-      }
-      return best ? { x: best.x, y: best.y, label: step.label } : null;
+      } else state.stepTimer = 0;
+      return;
     }
-    if (step.type === 'fare') {
-      if (m.fare && m.fare.state === 'riding') return { x: m.fare.dest.x, y: m.fare.dest.y, label: `Drop off at ${m.fare.dest.label}` };
-      const stand = world.city.taxiStands[step.stand];
-      return { x: stand.x, y: stand.y, label: step.label };
+    if (s.type === 'fare') {
+      if (state.phase === 'pickup') {
+        if (near(s.px, s.py)) {
+          state.stepTimer += dt;
+          if (state.stepTimer >= 1.5) {
+            state.phase = 'dropoff';
+            state.stepTimer = 0;
+          }
+        } else state.stepTimer = 0;
+      } else if (near(s.dx, s.dy)) advanceStep();
+      return;
     }
-    if (step.type === 'loseHeat') return null;
-  }
-  if (m.fare && m.fare.state === 'waiting') {
-    return { x: m.fare.stand.x, y: m.fare.stand.y, label: 'Pick up a fare' };
-  }
-  if (m.fare && m.fare.state === 'riding') {
-    return { x: m.fare.dest.x, y: m.fare.dest.y, label: `Drop off at ${m.fare.dest.label}` };
-  }
-  return null;
-}
-
-function completeStep(world) {
-  const m = world.missions;
-  m.stepIndex += 1;
-  world.player.style += 20;
-  world.audio.sfx('cash');
-  if (m.stepIndex >= JOBS[m.jobIndex].steps.length) completeJob(world);
-}
-
-function completeJob(world) {
-  const m = world.missions;
-  const job = JOBS[m.jobIndex];
-  const styleBonus = Math.min(Math.floor(world.player.style), 200);
-  const payout = job.reward + styleBonus;
-  world.player.cash += payout;
-  m.lastPayout = payout;
-  m.lastStyleBonus = styleBonus;
-  m.status = 'complete';
-  world.save.unlockedJob = Math.max(world.save.unlockedJob, m.jobIndex + 1);
-  world.save.cash = world.player.cash;
-  world.save.write();
-  world.audio.sfx('cash');
-  world.events.push({ type: 'jobDone', x: world.player.x, y: world.player.y });
-}
-
-export function failJob(world, reason) {
-  const m = world.missions;
-  m.status = 'failed';
-  m.failReason = reason;
-  world.audio.sfx('busted');
-}
-
-export function continueAfterJob(world, unlockNext = true) {
-  const m = world.missions;
-  const next = m.jobIndex + 1;
-  m.jobIndex = -1;
-  m.stepIndex = 0;
-  m.status = 'idle';
-  m.fareCooldown = 4;
-  if (unlockNext && next < JOBS.length) {
-    // The next job opens at once: the player can take it from the pause menu or the map.
-    world.save.unlockedJob = Math.max(world.save.unlockedJob, next);
-    world.save.write();
-  } else if (unlockNext) {
-    world.save.unlockedJob = JOBS.length;
-    world.save.write();
-  }
-}
-
-/** Keep the police presence matched to the wanted level. */
-export function updatePolicePresence(world, dt) {
-  const wanted = world.player.wanted;
-  const px = world.player.x;
-  const py = world.player.y;
-  // Cop cars: one per star, spawned out of sight on a road.
-  while (world.cops.length < wanted) {
-    const angle = world.rng.range(0, Math.PI * 2);
-    const dist = 700;
-    let x = px + Math.cos(angle) * dist;
-    let y = py + Math.sin(angle) * dist;
-    x = Math.max(240, Math.min(WORLD.width - 40, x));
-    y = Math.max(40, Math.min(WORLD.height - 40, y));
-    const node = { x, y };
-    const car = createCar({ x: node.x, y: node.y, angle: world.rng.range(0, Math.PI * 2), kind: 'cop', color: PALETTE.cop, owner: 'cop' });
-    world.cops.push(car);
-  }
-  while (world.cops.length > wanted) world.cops.pop();
-  // Foot cops when the player is on foot and wanted.
-  const wantFoot = !world.player.car && wanted > 0 ? Math.min(2, wanted) : 0;
-  while (world.footCops.length < wantFoot) {
-    const angle = world.rng.range(0, Math.PI * 2);
-    world.footCops.push(createFootCop(
-      Math.max(60, Math.min(WORLD.width - 20, px + Math.cos(angle) * 420)),
-      Math.max(20, Math.min(WORLD.height - 20, py + Math.sin(angle) * 420))));
-  }
-  while (world.footCops.length > wantFoot) world.footCops.pop();
-}
-
-export function updateMissions(world, dt) {
-  const m = world.missions;
-  const player = world.player;
-  if (m.status === 'active') {
-    const job = JOBS[m.jobIndex];
-    if (job.timeLimit) {
-      m.timer -= dt;
-      if (m.timer <= 0) { failJob(world, 'Out of time.'); return; }
-    }
-    const step = currentStep(world);
-    if (!step) return;
-    if (step.type === 'enterCar') {
-      if (player.car) completeStep(world);
-    } else if (step.type === 'goto') {
-      if (Math.hypot(step.x - player.x, step.y - player.y) < step.radius) completeStep(world);
-    } else if (step.type === 'fare') {
-      if (!m.fare) {
-        const stand = world.city.taxiStands[step.stand];
-        m.fare = { stand, dest: null, state: 'waiting', rider: null };
-        const rider = world.peds.find((p) => Math.hypot(p.x - stand.x, p.y - stand.y) < 200)
-          || world.peds[0];
-        m.fare.rider = rider;
-        if (rider) { rider.target = stand; rider.state = 'walk'; }
-      }
-      if (m.fare.state === 'waiting') {
-        const stand = m.fare.stand;
-        if (player.car && Math.hypot(stand.x - player.x, stand.y - player.y) < 55) {
-          m.fare.dest = world.rng.pick(FARE_DESTINATIONS);
-          m.fare.state = 'riding';
-          world.events.push({ type: 'fare', x: stand.x, y: stand.y });
+    if (s.type === 'tail') {
+      const c = state.courier;
+      if (!c) return;
+      const pos = playerPos();
+      const d = Math.hypot(c.x - pos.x, c.y - pos.y);
+      if (d > 70 && d < 300) {
+        state.progress += dt;
+        state.stepTimer = 0;
+        if (state.progress >= s.duration) advanceStep();
+      } else if (d <= 70) {
+        state.stepTimer += dt;
+        if (state.stepTimer > 3) {
+          state.progress = 0;
+          state.stepTimer = 0;
+          world.setWanted(Math.min(5, world.player.wanted + 1));
         }
-      } else if (m.fare.state === 'riding') {
-        if (Math.hypot(m.fare.dest.x - player.x, m.fare.dest.y - player.y) < 60) {
-          const fare = MISSION.taxiFareBase + world.rng.int(0, 60);
-          player.cash += fare;
-          player.style += 20;
-          world.events.push({ type: 'fareDone', x: player.x, y: player.y });
-          world.audio.sfx('cash');
-          m.fare = null;
-          completeStep(world);
-        }
+      } else {
+        state.progress = Math.max(0, state.progress - dt * 0.5);
       }
-    } else if (step.type === 'loseHeat') {
-      if (player.wanted === 0) completeStep(world);
-    }
-    return;
-  }
-  // Free roam: a fare waits at a stand every so often.
-  if (m.jobIndex < 0 && !m.fare) {
-    m.fareCooldown -= dt;
-    if (m.fareCooldown <= 0) {
-      const stand = world.rng.pick(world.city.taxiStands);
-      m.fare = { stand, dest: null, state: 'waiting', rider: null };
-      m.fareCooldown = 25;
     }
   }
-  if (m.fare && m.fare.state === 'waiting' && player.car
-    && Math.hypot(m.fare.stand.x - player.x, m.fare.stand.y - player.y) < 55) {
-    m.fare.dest = world.rng.pick(FARE_DESTINATIONS);
-    m.fare.state = 'riding';
-    world.events.push({ type: 'fare', x: m.fare.stand.x, y: m.fare.stand.y });
-  }
-  if (m.fare && m.fare.state === 'riding'
-    && Math.hypot(m.fare.dest.x - player.x, m.fare.dest.y - player.y) < 60) {
-    const fare = MISSION.taxiFareBase + world.rng.int(0, 60);
-    player.cash += fare;
-    player.style += 20;
-    world.events.push({ type: 'fareDone', x: player.x, y: player.y });
-    world.audio.sfx('cash');
-    m.fare = null;
-    m.fareCooldown = 18;
-  }
+
+  return { state, job, step, startJob, fail, completeJob, objective, update };
 }

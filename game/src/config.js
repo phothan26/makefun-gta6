@@ -1,124 +1,71 @@
-// Every tuning number and colour in one place. The playfield is a fixed 1280x720 logical
-// area; the renderer scales it to the window, so no rule below depends on the screen size.
+// Neon Bay — Sunset Getaway: every tuning number and colour in one place.
+// The view is a fixed 1280x720 logical area; the world is a 3200x2400 city the
+// camera pans across, so no rule below depends on the screen size.
 export const FIELD = { width: 1280, height: 720 };
+export const WORLD = { width: 3200, height: 2400, waterY: 2300 };
 
 /** The simulation's fixed step, in seconds: 60 updates a second whatever the display's rate. */
 export const STEP = 1 / 60;
 
-/** The city the game plays in, in world units. */
-export const WORLD = {
-  width: 3200,
-  height: 2400,
-  // West edge: water, then sand, then the first avenue. East edge is the city limit.
-  waterX: 70,
-  beachX: 200,
-  roadHalf: 45,
-  avenues: [200, 600, 1000, 1400, 1800, 2200, 2600, 3000],
-  streets: [200, 550, 900, 1250, 1600, 1950, 2200],
-};
+export const ROADS_X = [200, 600, 1000, 1400, 1800, 2200, 2600, 3000];
+export const ROADS_Y = [200, 600, 1000, 1400, 1800, 2200];
+export const ROAD_HALF = 46;
 
-export const PLAYER = {
-  radius: 14,
-  walkSpeed: 210,
-  runSpeed: 320,
-  health: 100,
-  punchRange: 34,
-  punchDamage: 25,
-  punchCooldown: 0.35,
-};
+export const PLAYER = { walkSpeed: 235, radius: 14, health: 100, enterRange: 78 };
 
 export const CAR = {
-  radius: 15,
-  length: 44,
-  width: 22,
-  accel: 420,
-  brake: 700,
-  reverseAccel: 260,
-  maxSpeed: 560,
-  maxReverse: 180,
-  steer: 2.6,
-  grip: 6.0,
-  driftGrip: 1.6,
-  trafficSpeed: 150,
-  copSpeed: 520,
+  length: 54, width: 27, accel: 440, brake: 760, reverseAccel: 320,
+  maxSpeed: 545, maxReverse: 195, steer: 2.75, grip: 8.5,
+};
+export const COP_CAR = { maxSpeed: 472, accel: 400, steer: 2.9 };
+export const TRAFFIC_COUNT = 14;
+export const PED_COUNT = 22;
+
+export const WANTED_MAX = 5;
+/** Sight radius of police by day; at night it shrinks (see SUNSET). */
+export const SIGHT = { day: 430, night: 235 };
+/** Seconds of no cop in sight before one wanted star fades. */
+export const WANTED_FADE = 7;
+
+export const STYLE = { nearMiss: 8, driftPerSec: 6, air: 15, package: 10, decay: 1.2 };
+
+/** Sunset Clock: clock 0 = afternoon, 0.55 = golden hour, 1 = deep night. */
+export const SUNSET = { golden: 0.55, night: 0.82 };
+
+export const LANDMARKS = {
+  garage: { x: 620, y: 600, label: "Dante's Garage" },
+  museum: { x: 1400, y: 945, label: 'Neon Museum' },
+  hotel: { x: 2955, y: 1000, label: 'Hotel Miramar' },
+  nbpd: { x: 1800, y: 1355, label: 'NBPD HQ' },
+  warehouse: { x: 1600, y: 2155, label: 'Pier Warehouse' },
+  pier: { x: 1600, y: 2362, label: 'Neon Bay Pier' },
+  ramp: { x: 2900, y: 1800, label: 'Stunt Ramp' },
 };
 
-export const WANTED = {
-  max: 5,
-  decayQuietSeconds: 12,
-  decayStepSeconds: 8,
-  // Police eyesight radius by time of day: night hides you better.
-  sightDay: 620,
-  sightNight: 420,
-  bustSeconds: 1.5,
-};
+/** The 12 hidden neon packages, fixed spots a run can learn by heart. */
+export const PACKAGES = [
+  { x: 260, y: 260 }, { x: 940, y: 260 }, { x: 2140, y: 260 }, { x: 2940, y: 260 },
+  { x: 260, y: 940 }, { x: 1060, y: 1340 }, { x: 1740, y: 940 }, { x: 2540, y: 940 },
+  { x: 260, y: 1740 }, { x: 940, y: 2140 }, { x: 2140, y: 2140 }, { x: 2940, y: 1340 },
+];
 
-export const STYLE = {
-  nearMiss: 10,
-  driftPerSecond: 6,
-  airTime: 25,
-  package: 15,
-  passenger: 20,
-  decayPerSecond: 2,
-  payoutPerPoint: 1,
-};
-
-export const TIME = {
-  // One full day cycle, in seconds of play: golden hour -> sunset -> neon night -> dawn.
-  cycleSeconds: 360,
-  sunsetStart: 0.18,
-  nightStart: 0.45,
-  dawnStart: 0.9,
-};
-
-export const MISSION = {
-  failCashPercent: 0.1,
-  packageReward: 50,
-  taxiFareBase: 40,
+export const PALETTE = {
+  backdrop: '#0b0e1a',
+  asphalt: '#23262f', asphaltLine: '#c8b45a', sidewalk: '#3a3d47',
+  grass: '#1d3320', sand: '#8a6f4d', water: '#0d2b45',
+  building: ['#2c2f3d', '#3a2f45', '#26384a', '#453a2f', '#33283a'],
+  neon: ['#ff2d78', '#00e5ff', '#ffe600', '#7c4dff', '#00ff9d'],
+  player: '#ff9f1c', playerCar: '#ff5a1f', traffic: ['#c9c9c9', '#4d7ea8', '#a84d4d', '#4da86e', '#8a7ec9'],
+  cop: '#1e4fd8', copLight: ['#ff2d2d', '#2d7bff'],
+  ped: ['#e8c39e', '#9ec7e8', '#e89ec7', '#c7e89e'],
+  text: '#f4f1e8', muted: '#9aa0b5', gold: '#ffd166', panel: '#141828',
+  wanted: '#ff3b30', health: '#3ddc84', style: '#ff2d78',
 };
 
 export const FONT = 'system-ui, -apple-system, "Segoe UI", sans-serif';
 
 /** Where progress is kept between visits (this browser only). */
 export const SAVE_KEY = 'neon-bay.save.v1';
-export const BEST_KEY = 'neon-bay.best.v1';
 
-/** Neon Bay's look: a sun-soaked coast sliding into a neon night. */
-export const PALETTE = {
-  // Sky, keyed by time of day (day / sunset / night / dawn).
-  skyDay: ['#7ec8e3', '#bfe8f2'],
-  skySunset: ['#ff7e5f', '#feb47b'],
-  skyNight: ['#1b1035', '#3b1d5e'],
-  skyDawn: ['#f7b733', '#fc4a1a'],
-  sunDay: '#fff3b0',
-  sunSet: '#ff5e3a',
-  sunNight: '#f4f1de',
-  waterDay: '#2e86ab',
-  waterNight: '#12233d',
-  sand: '#e8c98f',
-  grass: '#5d8a4a',
-  grassNight: '#2c4630',
-  asphalt: '#33363e',
-  asphaltNight: '#23252c',
-  sidewalk: '#8d8d94',
-  sidewalkNight: '#4a4a52',
-  roadLine: '#f2d06b',
-  building: ['#e8b4b8', '#a8d8ea', '#f6e6ad', '#c5b0d5', '#ffb6a3', '#9fd8c9', '#f2c6de'],
-  buildingNight: ['#4a3a52', '#2e4256', '#54452e', '#3d3350', '#54382f', '#2e4a44', '#4e3345'],
-  neon: ['#ff2e88', '#00f0ff', '#ffe600', '#7cff00', '#ff6b35'],
-  player: '#ffe600',
-  playerCar: '#ff2e88',
-  traffic: ['#d9d9d9', '#7fb3d5', '#f5b041', '#a569bd', '#58d68d', '#ec7063'],
-  taxi: '#ffd60a',
-  cop: '#2e86ff',
-  copLightR: '#ff2e2e',
-  copLightB: '#2e6bff',
-  ped: ['#f5c6a5', '#c9a06c', '#8d5524', '#ffdbac'],
-  pedShirt: ['#e74c3c', '#3498db', '#2ecc71', '#f39c12', '#9b59b6', '#1abc9c'],
-  text: '#f5f1e6',
-  muted: '#b8b0a0',
-  panel: 'rgba(16, 12, 32, 0.82)',
-  panelBorder: '#ff2e88',
-  gold: '#ffd60a',
-  danger: '#ff3b30',
-};
+/** The three synthesised radio stations. */
+export const STATIONS = ['NB-88 SYNTHWAVE', 'NB-102 LO-FI', 'NB-96 CHASE'];
