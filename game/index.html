@@ -1,34 +1,18 @@
-<!DOCTYPE html>
+<!doctype html>
 <html lang="en">
 <head>
 <meta charset="utf-8">
 <meta name="viewport" content="width=device-width, initial-scale=1">
-<title>NEON RAIN — Midnight Courier</title>
+<title>MARSHLIGHT — Gator Country Run</title>
 <style>
-  html, body { margin: 0; padding: 0; background: #05070d; color: #e8eefc;
-    font-family: "Courier New", ui-monospace, monospace; }
-  body { display: flex; flex-direction: column; align-items: center; min-height: 100vh; }
-  h1 { font-size: 20px; letter-spacing: 4px; color: #ff2d78; margin: 18px 0 2px; }
-  h1 span { color: #00e5ff; }
-  .sub { color: #9fb4d8; font-size: 13px; margin-bottom: 12px; }
-  canvas { border: 2px solid #1c2742; background: #070a16;
-    box-shadow: 0 0 60px rgba(255, 45, 120, 0.15), 0 0 60px rgba(0, 229, 255, 0.12); }
-  #status { margin-top: 12px; font-size: 14px; color: #ffe14d; min-height: 20px; text-align: center; }
-  .help { color: #5a6a8a; font-size: 12px; margin-top: 6px; text-align: center; line-height: 1.7; }
-  .help b { color: #9fb4d8; }
+  html, body { margin: 0; height: 100%; overflow: hidden; background: #0e241a; }
+  #game { position: fixed; inset: 0; width: 100%; height: 100%; display: block; touch-action: none; }
+  #status { position: absolute; width: 1px; height: 1px; overflow: hidden; clip-path: inset(50%); white-space: nowrap; }
 </style>
 </head>
 <body>
-<h1>NEON RAIN <span>— MIDNIGHT COURIER</span></h1>
-<div class="sub">Juno Reyes runs packages through a city that never stops raining.</div>
-<canvas id="game" width="1280" height="720"></canvas>
-<div id="status">Loading the night…</div>
-<div class="help">
-  <b>WASD / arrows</b> drive &amp; walk &nbsp;·&nbsp; <b>E</b> enter / exit vehicle &nbsp;·&nbsp;
-  <b>SPACE</b> slipstream (when the meter is full) &nbsp;·&nbsp; <b>1 / 2 / 3</b> radio stations &nbsp;·&nbsp; <b>M</b> mute<br>
-  Five courier jobs, twelve hidden packages, wanted level 0–5, police cars and a helicopter.
-  Progress saves in your browser — press ENTER to continue a saved night.
-</div>
-<script type="module" src="./src/main.mjs"></script>
+<canvas id="game" aria-label="MARSHLIGHT: run the Leonida wetlands by airboat for Beau Toussaint"></canvas>
+<p id="status" role="status" aria-live="polite"></p>
+<script type="module" src="./src/main.js"></script>
 </body>
 </html>

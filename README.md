@@ -1,49 +1,36 @@
-# makefun-gta6
+# MARSHLIGHT — Gator Country Run
 
 [![make.fun · gta6-01](https://make.fun/badge/gta6-01.svg)](https://make.fun/bounty/gta6-01?utm_source=github&utm_medium=readme&utm_campaign=gta6-01)
 [![rank](https://make.fun/badge/gta6-01/phothan26/makefun-gta6/rank.svg)](https://make.fun/bounty/gta6-01/leaderboard?utm_source=github&utm_medium=readme&utm_campaign=gta6-01)
 [![reward](https://make.fun/badge/gta6-01/phothan26/makefun-gta6/reward.svg)](https://make.fun/bounty/gta6-01?utm_source=github&utm_medium=readme&utm_campaign=gta6-01)
 
-NEON RAIN — Midnight Courier: Juno Reyes runs forbidden packages through a rain-soaked neon city at midnight, in the spirit of GTA 6. Five chained courier jobs, twelve hidden packages, a wanted level of 0–5 with police cars and a helicopter, cars and a bike to steal, and a Slipstream meter — tuck in behind traffic to charge it, then vanish from the police radar. The rain never stops: drizzle turns to downpour and back, and heavy rain shrinks how far the police can see. Built by an AI agent for make.fun's “Make GTA 6” bounty, $1,666 in USDC.
+An open-world crime game in the Leonida wetlands, built for make.fun's "Make GTA 6" bounty.
+
+Willa "Marsh" Okafor runs goods through the swamp for Beau Toussaint: five story jobs from dawn to dusk, by airboat, by car, and on foot. The marsh has a tide that opens and closes side channels, a day cycle that changes how far the police can see, gator nests that are dangerous and useful at the same time, and a Mud Ghost trick — sit still in the reeds and the heat drops a star.
+
+## What is in the game
+
+- A 2400×1800 open marsh: winding main channel, two tide-gated side channels, a south-east channel to the Far Dock, dirt roads, reed beds, stilt houses and a bait shop.
+- Three ways to move: airboat (fast on water, drifts wide, crosses mud at half speed), car (fast on roads), on foot (slow, slips into the reeds).
+- Wanted level 0–5: police boats and cars chase, a helicopter joins at 3 stars. Hide in the reeds to lose the heat.
+- Gators: they bite, and they scare the airboat — but police boats avoid their nests, so a gator channel is the safest escape route.
+- Five story jobs (First Light, High Water, Gator Country, Mud Ghost, The Last Run), 12 hidden supply caches, a style meter, cash, and a dossier at the end of a run.
+- HUD with wanted stars, health, cash, style, time of day, tide gauge and a live minimap; three WebAudio radio stations (Swamp Blues, Bayou Funk, Night Drive) plus synthesized sound effects; localStorage best-run save.
+- An autopilot (press B) that plays the whole story by itself — the same autopilot the entrypoint runs headlessly to prove the game is beatable.
 
 ## Run it
 
 ```sh
-npx --yes serve game
+node serve.ts
 ```
 
-Then open http://localhost:3000 in a desktop browser. Or serve `game/` with any static server (`python3 -m http.server` inside `game/` works too). No build step, no network requests, no libraries — just static files.
+Then open http://localhost:8080. WASD / arrows to drive, E to enter or leave a vehicle, 1/2/3 for radio, M to mute, B for autopilot, Esc to pause.
 
-Verify the headless run (the autopilot plays three nights on its own and writes a report + dossier):
+The entrypoint `main.ts` copies `game/` and `screenshots/` to `/output`, runs the autopilot for three seeds, and writes `run-report.json` and `dossier.json`:
 
 ```sh
-MAKEFUN_OUTPUT_DIR=out node main.ts
+mkdir -p out && MAKEFUN_OUTPUT_DIR=out node main.ts
 ```
-
-## How to play
-
-- **WASD / arrows** — drive and walk
-- **E** — enter / exit a car or bike (walk up to a parked one)
-- **SPACE** — fire Slipstream when the meter is full
-- **1 / 2 / 3** — radio stations (all synthesized, no audio files)
-- **M** — mute
-- **ENTER** — start, continue a saved night, or drive another night
-
-Deliver all five jobs before their timers run out. Crashes and the helicopter spotlight raise your wanted level; hide, or slipstream, to cool it down. Progress saves in your browser (localStorage).
-
-## Files
-
-- `main.ts` — the entry point: plays three headless nights with the bot, then hands in `game/`, `screenshots/` and `dossier.json`
-- `game/index.html` — the game page
-- `game/src/sim.mjs` — the simulation (city, vehicles, police, weather, jobs)
-- `game/src/city.mjs` — the seeded neon city
-- `game/src/bot.mjs` — the autopilot that finishes all five jobs
-- `game/src/render.mjs` — the scene, as draw commands
-- `game/src/canvas.mjs` — the browser canvas executor
-- `game/src/audio.mjs` — WebAudio radio stations and sound effects
-- `game/src/main.mjs` — the browser shell, save/load, game loop
-- `game/src/rng.mjs` — seeded randomness (the same seed plays the same night)
-- `screenshots/` — four renders of the game itself: start, driving, police chase, night complete
 
 ---
 

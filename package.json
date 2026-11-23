@@ -1,0 +1,1 @@
+{"description":"MARSHLIGHT — Gator Country Run: an open-world crime game in the Leonida wetlands, built for make.fun's Make GTA 6 bounty.","license":"MIT","name":"marshlight-gator-country-run","private":true,"scripts":{"serve":"node serve.ts","start":"node serve.ts"},"type":"module","version":"1.0.0"}

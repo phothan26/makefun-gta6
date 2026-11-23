@@ -1,73 +1,83 @@
-// NEON RAIN — Midnight Courier: the entry point (Node 22+, standard library only).
+// MARSHLIGHT — Gator Country Run (gta6-01, variant 3). Node 22, standard
+// library only. The entrypoint hands the game in: it copies game/ and
+// screenshots/ from beside this file to /output, proves the game is
+// beatable by running the autopilot headlessly for three seeds, and
+// writes /output/dossier.json with the vendored make.fun library.
 //
-// What it does, in order:
-//   1. Plays the game headless with the autopilot on three seeds, so the run
-//      proves the bot can finish all five courier jobs on its own. The result
-//      lands in /output/report.json — a plain record, no timestamps, so two
-//      runs with the same seeds write byte-identical bytes.
-//   2. Copies game/ and screenshots/ from beside this file to /output.
-//   3. Writes /output/dossier.json with the vendored make.fun library.
+// Outside the grader's container, MAKEFUN_OUTPUT_DIR stands in for
+// /output:
+//   mkdir -p out && MAKEFUN_OUTPUT_DIR=out node main.ts
 //
-// The program never changes /output itself: it only makes files it creates
-// world-readable, and every chmod is guarded, so a read-only output root is
-// fine. A bot seed that fails is recorded in the report, never fatal: the
-// game is still handed in, and the dossier is still written.
+// The bot run is pure simulation — no browser, no clock, no network —
+// so two runs write the same bytes. The screenshots in screenshots/
+// are renders the maker took of the game in a browser; this program
+// copies them, never re-renders them.
 
 import { cpSync, existsSync, mkdirSync, writeFileSync, chmodSync } from 'node:fs';
 import { join } from 'node:path';
 import { fileURLToPath } from 'node:url';
 import { buildDossier } from './vendor/makefun-game.ts';
-import { runBot } from './game/src/bot.mjs';
+import { createGame, stepGame } from './game/src/sim.js';
+import { createBot, botInput } from './game/src/bot.js';
 
 const here = fileURLToPath(new URL('.', import.meta.url));
 const out = process.env.MAKEFUN_OUTPUT_DIR ?? '/output';
+const SEEDS = [1, 7, 42];
+const TICK_CAP = 43200;
 
-// The output root belongs to whoever made it; only touch files of our own.
+// Every file this program creates gets world-readable permissions,
+// guarded, and never applied to /output itself or to anything this
+// program did not make — the grader runs as another user.
+function makeReadable(path) {
+  try { chmodSync(path, 0o644); } catch { /* already readable */ }
+}
+
+function playSeed(seed) {
+  const game = createGame(seed);
+  const bot = createBot();
+  while (!game.complete && game.tick < TICK_CAP) {
+    stepGame(game, botInput(game, bot));
+  }
+  if (!game.complete) {
+    throw new Error(`seed ${seed}: the autopilot did not finish the story`);
+  }
+  return game.report;
+}
+
 mkdirSync(out, { recursive: true });
-
-function makeWorldReadable(path) {
-  try {
-    chmodSync(path, 0o644);
-  } catch {
-    // A filesystem that refuses the chmod still leaves a readable file in
-    // the usual case; the run goes on either way.
-  }
-}
-
-// 1. Headless proof: the autopilot plays three nights on its own.
-const seeds = [7, 42, 1337];
-const nights = [];
-for (const seed of seeds) {
-  try {
-    nights.push(runBot(seed));
-  } catch (err) {
-    nights.push({ seed, jobs: 0, complete: false, ticks: 0, money: 0, packages: 0, errors: [String(err)] });
-  }
-}
-const report = {
-  game: 'NEON RAIN — Midnight Courier',
-  courier: 'Juno Reyes',
-  fixer: 'Mara Voss',
-  jobs: 5,
-  hiddenPackages: 12,
-  nights,
-  allComplete: nights.every((n) => n.complete && n.errors.length === 0),
-};
-const reportPath = join(out, 'report.json');
-writeFileSync(reportPath, `${JSON.stringify(report, null, 2)}\n`);
-makeWorldReadable(reportPath);
-for (const n of nights) {
-  console.log(`night seed=${n.seed} jobs=${n.jobs}/5 complete=${n.complete} ticks=${n.ticks} money=$${n.money} packages=${n.packages} errors=${n.errors.length}`);
-}
-
-// 2. The game and its screenshots, exactly as they sit in the repository.
 cpSync(join(here, 'game'), join(out, 'game'), { recursive: true });
 mkdirSync(join(out, 'screenshots'), { recursive: true });
 if (existsSync(join(here, 'screenshots'))) {
   cpSync(join(here, 'screenshots'), join(out, 'screenshots'), { recursive: true });
 }
 
-// 3. The dossier the judge reads, built by the scorer's own library.
+const runs = SEEDS.map((seed) => playSeed(seed));
+const runReport = {
+  title: 'MARSHLIGHT — Gator Country Run',
+  hero: 'Willa "Marsh" Okafor',
+  fixer: 'Beau Toussaint',
+  seeds: SEEDS,
+  tickCap: TICK_CAP,
+  runs: runs.map((r) => ({
+    seed: r.seed,
+    complete: r.complete,
+    ticks: r.ticks,
+    cash: r.cash,
+    style: r.style,
+    busted: r.busted,
+    cachesFound: r.cachesFound,
+    cachesTotal: r.cachesTotal,
+    jobs: r.jobs,
+  })),
+};
+const runReportPath = join(out, 'run-report.json');
+writeFileSync(runReportPath, JSON.stringify(runReport, null, 2) + '\n');
+makeReadable(runReportPath);
+
+// The scorer's own caps: only text_max_bytes shapes the bytes; the
+// others refuse an entry the scorer would refuse (more than 4
+// screenshots or one over 256 KiB; more than 993 files in game/ or
+// 48 MiB of game files in all, or a path under game/ over 1000 bytes).
 const dossierPath = join(out, 'dossier.json');
 writeFileSync(
   dossierPath,
@@ -79,6 +89,7 @@ writeFileSync(
     game_path_max_bytes: 1000,
   }),
 );
-makeWorldReadable(dossierPath);
-console.log(`dossier written: ${dossierPath}`);
-console.log(`all nights complete: ${report.allComplete}`);
+makeReadable(dossierPath);
+
+console.log(`MARSHLIGHT: ${runs.length} seeds, all complete — ` +
+  runs.map((r) => `seed ${r.seed}: ${r.ticks} ticks, $${r.cash}`).join('; '));
